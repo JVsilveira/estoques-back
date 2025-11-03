@@ -4,12 +4,15 @@ from typing import List, Optional
 from pydantic import BaseModel
 from fastapi.security import OAuth2PasswordRequestForm
 from datetime import timedelta
-from sqlalchemy.orm import Session
-from app.core.auth import create_access_token, verify_password
 
 from app import models, schemas
 from app.core.database import get_db
-from app.core.auth import get_current_user, create_access_token
+from app.core.auth import (
+    create_access_token,
+    verify_password,
+    get_password_hash,
+    get_current_user,
+)
 
 router = APIRouter()
 
@@ -43,51 +46,54 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     Login do usuário:
     - Recebe username e password
     - Verifica credenciais com hash
-    - Retorna access_token JWT
+    - Retorna token JWT contendo id, role e região
     """
-    # Busca usuário pelo username
     user = db.query(models.User).filter(models.User.username == form_data.username).first()
-    if not user:
+    if not user or not verify_password(form_data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Usuário ou senha inválidos")
 
-    # Verifica senha usando hash
-    if not verify_password(form_data.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Usuário ou senha inválidos")
-
-    # Cria token JWT
+    # Gera token JWT com dados do usuário
     access_token = create_access_token(
-        data={"sub": user.id},  # sub = user_id
+        data={
+            "sub": user.id,
+            "username": user.username,
+            "role": user.role,
+            "region": user.region
+        },
         expires_delta=timedelta(minutes=60)
     )
 
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"token": access_token, "token_type": "bearer"}
 
 
 # -------------------------
 # USERS CRUD
 # -------------------------
-@router.get("/users", response_model=List[schemas.UserOut])
-def list_users(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Acesso negado")
-    return db.query(models.User).all()
-
-
-@router.get("/users/me", response_model=schemas.UserOut)
-def read_me(current_user: models.User = Depends(get_current_user)):
-    return current_user
-
-
 @router.post("/users", response_model=schemas.UserOut)
-def create_user(user: schemas.UserCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+def create_user(
+    user: schemas.UserCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Cria um novo usuário:
+    - Apenas admin pode criar
+    - A senha é automaticamente convertida em hash antes de salvar
+    """
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Acesso negado")
+
+    existing_user = db.query(models.User).filter(models.User.username == user.username).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Usuário já existe")
+
+    password_hash = get_password_hash(user.password)
 
     db_user = models.User(
         username=user.username,
         registration_number=user.registration_number,
         email=user.email,
-        password_hash=user.password,  # trocar para hash real depois
+        password_hash=password_hash,
         role=user.role,
         region=user.region
     )
