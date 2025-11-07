@@ -4,7 +4,7 @@ from sqlalchemy import func
 from typing import Optional
 
 from app.core.dependencies import get_db
-from app.core.auth import get_current_user
+from app.core.dependencies import get_current_user
 from app import models
 
 router = APIRouter(prefix="/estoque", tags=["Estoque"])
