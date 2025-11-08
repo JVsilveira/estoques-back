@@ -7,9 +7,6 @@ from app.models.user_model import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# ---------------------------
-# Sessão do banco
-# ---------------------------
 def get_db():
     db = SessionLocal()
     try:
@@ -17,16 +14,20 @@ def get_db():
     finally:
         db.close()
 
-# ---------------------------
-# Usuário atual
-# ---------------------------
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
-    payload = decode_access_token(token)
-    user_id = payload.get("sub") or payload.get("user_id")
+    try:
+        payload = decode_access_token(token)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido ou expirado"
+        )
+
+    user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token inválido"
+            detail="Token inválido: sem 'sub'"
         )
 
     user = db.query(User).filter(User.id == int(user_id)).first()
@@ -40,21 +41,6 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if "role" in payload:
         user.role = payload["role"].lower()
     if "regiao" in payload:
-        user.region = payload["regiao"]
+        user.regiao = payload["regiao"]
 
     return user
-
-# ---------------------------
-# Filtragem de ativos por usuário
-# ---------------------------
-def filter_ativos_by_user(db: Session, current_user: User):
-    """
-    Usuário admin: retorna todos os ativos.
-    Usuário comum: retorna apenas ativos da sua região.
-    """
-    from app.models.ativo_model import Ativo
-
-    query = db.query(Ativo)
-    if current_user.role != "admin" and current_user.region:
-        query = query.filter(Ativo.region == current_user.region)
-    return query.all()

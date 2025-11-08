@@ -1,16 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
-from datetime import timedelta
 from app.core.auth import verify_password, create_access_token
-from app.core.config import settings 
-
 from app.core.database import get_db
 from app.models.user_model import User
 
-
-router = APIRouter(
-    tags=["Autenticação"]
-)
+router = APIRouter(tags=["Autenticação"])
 
 @router.post("/login")
 async def login(request: Request, db: Session = Depends(get_db)):
@@ -19,39 +13,56 @@ async def login(request: Request, db: Session = Depends(get_db)):
     - matricula
     - senha
     """
+
+    # 1️⃣ Tenta ler JSON
     try:
-        # Tenta ler como JSON
         data = await request.json()
         matricula = data.get("matricula")
         senha = data.get("senha")
-    except:
-        # Se falhar, tenta form-urlencoded
+    except Exception:
+        # 2️⃣ Se JSON falhar, tenta form-urlencoded
         form = await request.form()
         matricula = form.get("matricula")
         senha = form.get("senha")
 
+    # Remove espaços extras
+    matricula = matricula.strip() if matricula else None
+    senha = senha.strip() if senha else None
+
+    # 3️⃣ Valida campos
     if not matricula or not senha:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Matrícula e senha são obrigatórios"
         )
 
-    # Busca usuário pelo campo "matricula"
+    # 4️⃣ Busca usuário
     user = db.query(User).filter(User.matricula == matricula).first()
-    if not user or not verify_password(senha, user.senha_hash):
+    print("Usuário encontrado:", user)  # debug
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Matrícula ou senha incorreta"
         )
 
-    # Cria token JWT
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    # 5️⃣ Verifica senha
+    if not verify_password(senha, user.senha_hash):
+        print("Senha digitada:", senha)
+        print("Hash no banco:", user.senha_hash)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Matrícula ou senha incorreta"
+        )
+
+    # 6️⃣ Cria token JWT
     token = create_access_token(
         data={
             "sub": user.id,
+            "matricula": user.matricula,
             "role": user.tipo_usuario,
             "region": user.regiao
-        },
+        }
     )
 
+    # 7️⃣ Retorna token
     return {"access_token": token, "token_type": "bearer"}
