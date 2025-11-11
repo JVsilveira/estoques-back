@@ -14,7 +14,7 @@ load_dotenv(dotenv_path=os.path.join(sys.path[0], ".env"))
 # Agora podemos importar módulos da app
 from app.core.config import settings
 from app.core.database import Base
-from app.models import User, Ativo, Periferico  # importe todos os modelos
+from app.models import User, Ativo, Periferico  
 
 # Configurações do Alembic
 config = context.config

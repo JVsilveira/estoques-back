@@ -4,6 +4,7 @@ from typing import List
 from app.core.dependencies import get_db, get_current_user
 from app.models.periferico_model import Periferico
 from app.schemas.periferico_schema import PerifericoCreate, PerifericoResponse, PerifericoUpdate
+
 router = APIRouter(prefix="/ativos", tags=["Ativos"])
 
 @router.post("/", response_model=PerifericoCreate)

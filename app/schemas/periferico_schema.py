@@ -9,10 +9,6 @@ class StatusItem(str, Enum):
 
 class PerifericoBase(BaseModel):
     tipo_item: str
-    marca: str
-    modelo: str
-    nota_fiscal: Optional[str] = None
-    sku: Optional[str] = None
     quantidade: Optional[int] = 0
     status: Optional[StatusItem] = StatusItem.em_estoque
 

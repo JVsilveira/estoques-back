@@ -3,12 +3,17 @@ from sqlalchemy.orm import Session
 from typing import Dict
 from app.core.dependencies import get_db, get_current_user
 from app.models.ativo_model import Ativo, StatusItem as StatusAtivo
-from app.models.periferico_model import Periferico, StatusItem as StatusPeriferico
+from app.models.periferico_model import Periferico
 
 router = APIRouter(prefix="/entrada", tags=["Movimentação de Estoque"])
 
+
 @router.post("/")
-def registrar_entrada(dados: Dict, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def registrar_entrada(
+    dados: Dict,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user)
+):
     regiao = dados.get("regiao") or getattr(user, "regiao", None)
     if not regiao:
         raise HTTPException(status_code=400, detail="Região não especificada.")
@@ -37,7 +42,10 @@ def registrar_entrada(dados: Dict, db: Session = Depends(get_db), user=Depends(g
             ativo_db.status = StatusAtivo.EM_ESTOQUE
             db.commit()
             db.refresh(ativo_db)
-            ativos_processados.append({"numero_serie": numero_serie, "acao": "atualizado"})
+            ativos_processados.append({
+                "numero_serie": numero_serie,
+                "acao": "atualizado"
+            })
         else:
             # Cria novo ativo
             novo_ativo = Ativo(
@@ -52,13 +60,16 @@ def registrar_entrada(dados: Dict, db: Session = Depends(get_db), user=Depends(g
             db.add(novo_ativo)
             db.commit()
             db.refresh(novo_ativo)
-            ativos_processados.append({"numero_serie": numero_serie, "acao": "criado"})
+            ativos_processados.append({
+                "numero_serie": numero_serie,
+                "acao": "criado"
+            })
 
     # ------------------------
     # PROCESSA PERIFÉRICOS
     # ------------------------
     for perif in dados.get("perifericos", []):
-        tipo = perif.get("tipo_item")
+        tipo = perif.get("tipo_item")  # ← campo correto do frontend
         qtd = perif.get("quantidade", 1)
 
         if not tipo:
@@ -66,14 +77,12 @@ def registrar_entrada(dados: Dict, db: Session = Depends(get_db), user=Depends(g
             continue
 
         perif_db = db.query(Periferico).filter(
-            Periferico.tipo_item == tipo,
+            Periferico.tipo_item == tipo,  # ← campo correto no modelo
             Periferico.regiao == regiao
         ).first()
 
         if perif_db:
-            # ✅ Soma a quantidade existente
             perif_db.quantidade += qtd
-            perif_db.status = StatusPeriferico.EM_ESTOQUE
             db.commit()
             db.refresh(perif_db)
             perifericos_processados.append({
@@ -81,3 +90,19 @@ def registrar_entrada(dados: Dict, db: Session = Depends(get_db), user=Depends(g
                 "acao": f"quantidade_atualizada (+{qtd})",
                 "quantidade_total": perif_db.quantidade
             })
+        else:
+            novo_perif = Periferico(
+                tipo_item=tipo,  # ← campo correto no modelo
+                quantidade=qtd,
+                regiao=regiao
+            )
+            db.add(novo_perif)
+            db.commit()
+            db.refresh(novo_perif)
+            perifericos_processados.append({
+                "tipo_item": tipo,
+                "acao": "criado",
+                "quantidade_total": qtd
+            })
+
+ 
