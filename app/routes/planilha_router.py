@@ -13,11 +13,8 @@ def listar_ativos(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Retorna os ativos de acordo com o perfil do usuário:
-    - Usuário comum → apenas os ativos da sua região.
-    - Admin → pode ver todos ou filtrar por uma região específica.
-    """
+    print("Usuário autenticado:", current_user.matricula, current_user.role, current_user.regiao)
+    print("Região solicitada:", regiao)
 
     # Usuário administrador
     if current_user.role.lower() == "administrador":
@@ -25,7 +22,6 @@ def listar_ativos(
             ativos = db.query(Ativo).filter(Ativo.regiao == regiao).all()
         else:
             ativos = db.query(Ativo).all()
-    # Usuário comum
     else:
         if not current_user.regiao:
             raise HTTPException(
@@ -34,15 +30,25 @@ def listar_ativos(
             )
         ativos = db.query(Ativo).filter(Ativo.regiao == current_user.regiao).all()
 
-    return [
+    print("Qtd de ativos retornados:", len(ativos))
+
+    # Se a lista estiver vazia, devolve array vazio (não None)
+    if not ativos:
+        return []
+
+    resposta = [
         {
-            "tipo": a.tipo,
+            "tipo": a.tipo_item,
             "numero_serie": a.numero_serie,
             "modelo": a.modelo,
             "marca": a.marca,
-            "numero_ativo": a.numero_ativo,
-            "status": a.status,
+            "numero_ativo": a.nota_fiscal,
+            "status": "Em estoque" if a.status.value == "em_estoque" else "Em uso",
             "regiao": a.regiao
         }
         for a in ativos
     ]
+
+    print("Exemplo de resposta:", resposta[0] if resposta else "lista vazia")
+    return resposta
+
