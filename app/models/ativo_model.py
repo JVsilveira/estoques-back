@@ -15,5 +15,9 @@ class Ativo(Base):
     modelo = Column(String, nullable=False)
     nota_fiscal = Column(String, nullable=True)
     numero_serie = Column(String, nullable=False, unique=True)
-    status = Column(Enum(StatusItem), default=StatusItem.EM_ESTOQUE)
+    status = Column(
+    Enum(StatusItem, native_enum=False),
+    nullable=False,
+    default=StatusItem.EM_ESTOQUE
+)
     regiao = Column(String, nullable=False)

@@ -14,95 +14,157 @@ def registrar_entrada(
     db: Session = Depends(get_db),
     user=Depends(get_current_user)
 ):
-    regiao = dados.get("regiao") or getattr(user, "regiao", None)
-    if not regiao:
-        raise HTTPException(status_code=400, detail="Região não especificada.")
+    # ========================
+    # RESOLUÇÃO DE REGIÃO
+    # ========================
+    regiao_payload = dados.get("regiao")
+    regiao_token = getattr(user, "regiao", None)
+
+    if regiao_token:
+        # usuário comum
+        if regiao_payload and regiao_payload != regiao_token:
+            raise HTTPException(
+                status_code=403,
+                detail="Usuário não pode operar em outra região."
+            )
+        regiao = regiao_token
+    else:
+        # administrador
+        if not regiao_payload:
+            raise HTTPException(
+                status_code=400,
+                detail="Administrador deve informar a região no payload."
+            )
+        regiao = regiao_payload
+
+    # ========================
+    # CONTEXTO (DEFAULT)
+    # ========================
+    contexto = dados.get("contexto", "ENTRADA").upper()
+    if contexto not in ["ENTRADA", "SAIDA"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Contexto inválido. Use ENTRADA ou SAIDA."
+        )
 
     ativos_processados = []
     perifericos_processados = []
     erros = []
 
-    # ------------------------
+    # ========================
     # PROCESSA ATIVOS
-    # ------------------------
+    # ========================
     for ativo in dados.get("ativos", []):
         numero_serie = ativo.get("numero_serie")
-
         if not numero_serie:
             erros.append({"item": ativo, "erro": "Ativo sem número de série"})
             continue
 
-        ativo_db = db.query(Ativo).filter(
-            Ativo.numero_serie == numero_serie,
-            Ativo.regiao == regiao
-        ).first()
+        try:
+            ativo_db = db.query(Ativo).filter(
+                Ativo.numero_serie == numero_serie,
+                Ativo.regiao == regiao
+            ).first()
 
-        if ativo_db:
-            # Atualiza status para 'em_estoque'
-            ativo_db.status = StatusAtivo.EM_ESTOQUE
-            db.commit()
-            db.refresh(ativo_db)
-            ativos_processados.append({
-                "numero_serie": numero_serie,
-                "acao": "atualizado"
-            })
-        else:
-            # Cria novo ativo
-            novo_ativo = Ativo(
-                tipo_item=ativo.get("tipo_item"),
-                marca=ativo.get("marca"),
-                modelo=ativo.get("modelo"),
-                nota_fiscal=ativo.get("nota_fiscal"),
-                numero_serie=numero_serie,
-                regiao=regiao,
-                status=StatusAtivo.EM_ESTOQUE
+            novo_status = (
+                StatusAtivo.EM_ESTOQUE
+                if contexto == "ENTRADA"
+                else StatusAtivo.EM_USO
             )
-            db.add(novo_ativo)
-            db.commit()
-            db.refresh(novo_ativo)
-            ativos_processados.append({
-                "numero_serie": numero_serie,
-                "acao": "criado"
-            })
 
-    # ------------------------
+            if ativo_db:
+                ativo_db.status = novo_status
+                ativos_processados.append({
+                    "numero_serie": numero_serie,
+                    "acao": "atualizado",
+                    "status": novo_status.value
+                })
+            else:
+                novo_ativo = Ativo(
+                    tipo_item=ativo.get("tipo_item", "NOTEBOOK"),
+                    marca=ativo.get("marca", "----------"),
+                    modelo=ativo.get("modelo", "----------"),
+                    nota_fiscal=ativo.get("nota_fiscal"),
+                    numero_serie=numero_serie,
+                    regiao=regiao,
+                    status=novo_status
+                )
+                db.add(novo_ativo)
+                ativos_processados.append({
+                    "numero_serie": numero_serie,
+                    "acao": "criado",
+                    "status": novo_status.value
+                })
+
+        except Exception as e:
+            erros.append({"item": ativo, "erro": str(e)})
+
+    # ========================
     # PROCESSA PERIFÉRICOS
-    # ------------------------
+    # ========================
     for perif in dados.get("perifericos", []):
-        tipo = perif.get("tipo_item")  # ← campo correto do frontend
+        tipo = perif.get("tipo_item")
         qtd = perif.get("quantidade", 1)
 
         if not tipo:
-            erros.append({"item": perif, "erro": "Tipo de periférico não especificado"})
+            erros.append({"item": perif, "erro": "Periférico sem tipo"})
             continue
 
-        perif_db = db.query(Periferico).filter(
-            Periferico.tipo_item == tipo,  # ← campo correto no modelo
-            Periferico.regiao == regiao
-        ).first()
+        try:
+            perif_db = db.query(Periferico).filter(
+                Periferico.tipo_item == tipo,
+                Periferico.regiao == regiao
+            ).first()
 
-        if perif_db:
-            perif_db.quantidade += qtd
-            db.commit()
-            db.refresh(perif_db)
-            perifericos_processados.append({
-                "tipo_item": tipo,
-                "acao": f"quantidade_atualizada (+{qtd})",
-                "quantidade_total": perif_db.quantidade
-            })
-        else:
-            novo_perif = Periferico(
-                tipo_item=tipo,  # ← campo correto no modelo
-                quantidade=qtd,
-                regiao=regiao
-            )
-            db.add(novo_perif)
-            db.commit()
-            db.refresh(novo_perif)
-            perifericos_processados.append({
-                "tipo_item": tipo,
-                "acao": "criado",
-                "quantidade_total": qtd
-            })
+            if perif_db:
+                perif_db.quantidade += qtd
+                perifericos_processados.append({
+                    "tipo_item": tipo,
+                    "acao": "quantidade_atualizada",
+                    "quantidade_total": perif_db.quantidade
+                })
+            else:
+                novo_perif = Periferico(
+                    tipo_item=tipo,
+                    quantidade=qtd,
+                    regiao=regiao
+                )
+                db.add(novo_perif)
+                perifericos_processados.append({
+                    "tipo_item": tipo,
+                    "acao": "criado",
+                    "quantidade_total": qtd
+                })
 
- 
+        except Exception as e:
+            erros.append({"item": perif, "erro": str(e)})
+
+    # ========================
+    # VALIDA SE PROCESSOU ALGO
+    # ========================
+    if not ativos_processados and not perifericos_processados:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail="Nenhum item válido para processar."
+        )
+
+    # ========================
+    # COMMIT FINAL
+    # ========================
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao salvar no banco: {str(e)}"
+        )
+
+    return {
+        "regiao": regiao,
+        "contexto": contexto,
+        "ativos_processados": ativos_processados,
+        "perifericos_processados": perifericos_processados,
+        "erros": erros
+    }

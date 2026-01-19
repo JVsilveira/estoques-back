@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from app.core.dependencies import get_current_user
 from app.core.dependencies import get_db
 from app.models.user_model import User
 from app.schemas.user_schema import UserCreate, UserResponse, UserUpdate
@@ -69,7 +68,7 @@ def atualizar_usuario(matricula: str, dados: UserUpdate, db: Session = Depends(g
     if dados.senha:
         usuario.senha_hash = get_password_hash(dados.senha)
     if dados.nome:
-        usuario.nome = dados.nome  # mantém o nome correto com acento
+        usuario.nome = dados.nome  
     if dados.cargo:
         usuario.cargo = dados.cargo
     if dados.regiao:

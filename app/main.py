@@ -10,6 +10,7 @@ import app.routes.entrada_router as entrada_router
 import app.routes.saida_router as saida_router
 import app.routes.estoque_router as estoque_router
 import app.routes.login_router as login_router
+import app.routes.auditoria_router as auditoria_router
 
 # -----------------------
 # Cria a aplicação FastAPI
@@ -53,3 +54,4 @@ app.include_router(entrada_router.router)
 app.include_router(saida_router.router)
 app.include_router(estoque_router.router)
 app.include_router(login_router.router)
+app.include_router(auditoria_router.router)
